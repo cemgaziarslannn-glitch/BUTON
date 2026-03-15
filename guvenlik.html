@@ -927,17 +927,24 @@ function updateQRButtons(){
     const pointName = btn.parentElement.querySelector('span')?.innerText;
     const isRead = readPoints.some(p => p.name === pointName || p.name === btn.dataset.point);
     
-    if(isRead) {
+ if(isRead) {
+      // Bluetooth butonu için
       if(btn.innerText.includes("Doğrula")) {
           btn.innerText = "✅ Doğrulandı";
-          btn.style.backgroundColor = "#2ecc71";
+          btn.style.backgroundColor = "#00c851"; 
+          btn.style.color = "#fff";
       }
       btn.disabled = true;
       btn.classList.add('read');
       
-      // Yanındaki yazıyı "Tamamlandı" yap
+      // Yanındaki "Tamamlandı" yazısı için
       const span = btn.parentElement.querySelector('span');
-      if(span) span.innerText = 'Tamamlandı';
+      if(span) {
+          span.innerText = '✓ Tamamlandı';
+          span.style.color = "#00e676";
+          span.style.fontWeight = "800";
+          span.style.textShadow = "0 0 8px rgba(0, 230, 118, 0.4)";
+      }
     }
   });
 }
@@ -1070,13 +1077,21 @@ async function noktayiOnaylaVeKaydet(pointName, btnEl) {
                 readPoints: readPoints
             });
 
-            // Arayüz Güncelleme
-            btnEl.classList.add('read');
-            // Eğer bu bir Bluetooth butonuysa (btBtn), QR butonunu da etkisizleştir
+            // ✅ ANLIK YEŞİLLENDİRME KOMUTLARI
+            btnEl.innerText = "✅ Doğrulandı";
+            btnEl.style.backgroundColor = "#00c851"; 
+            btnEl.style.color = "#ffffff";
+            btnEl.disabled = true;
+
             const row = btnEl.closest('div');
             if(row) {
                 const span = row.querySelector('span');
-                if(span) span.innerText = 'Tamamlandı';
+                if(span) {
+                    span.innerText = '✓ Tamamlandı';
+                    span.style.color = "#00e676";
+                    span.style.fontWeight = "800";
+                    span.style.textShadow = "0 0 8px rgba(0, 230, 118, 0.4)";
+                }
                 row.querySelectorAll('button').forEach(b => {
                     b.disabled = true;
                     if(b.classList.contains('qrBtn')) b.classList.add('read');
@@ -1084,42 +1099,60 @@ async function noktayiOnaylaVeKaydet(pointName, btnEl) {
             }
         }
     }, async (error) => {
+        // HATA OLSA BİLE YEŞİLLENDİR
         const currentTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         if (!readPoints.some(p => p.name === pointName)) {
             readPoints.push({ name: pointName, time: currentTime, lat: "Konum Yok", lng: "Konum Yok" });
             await set(activeDevriyeRef, { startTime: devriyeStartTime.toISOString(), readPoints: readPoints });
-            btnEl.classList.add('read');
+            
+            btnEl.innerText = "✅ Doğrulandı";
+            btnEl.style.backgroundColor = "#00c851";
+            btnEl.disabled = true;
+            
             const row = btnEl.closest('div');
-            if(row) row.querySelectorAll('button').forEach(b => b.disabled = true);
+            if(row) {
+                const span = row.querySelector('span');
+                if(span) {
+                    span.innerText = '✓ Tamamlandı';
+                    span.style.color = "#00e676";
+                }
+                row.querySelectorAll('button').forEach(b => b.disabled = true);
+            }
         }
     }, { enableHighAccuracy: true, timeout: 18000, maximumAge: 0 });
+
 }
-async function startBluetoothScanner(pointName, btnEl) {
+async function startBluetoothScanner(pointName, btnEl, targetTagName, targetTagId) {
     if(!devriyeStarted){ showWarningModal("Önce devriyeyi başlatın!"); return; }
     
     try {
-        showWarningModal("Cihaz aranıyor... Lütfen iTag butonuna basın.", 4000);
+        showWarningModal(`Lütfen "${targetTagName}" Devriye Noktasını Seçin...`, 5000);
         
+        // 1. AŞAMA: Sadece "C-1" ismindeki cihazları listele
         const device = await navigator.bluetooth.requestDevice({
-            filters: [{ services: [BEACON_SERVICE_UUID] }],
-            optionalServices: [BEACON_SERVICE_UUID]
+            filters: [{ name: targetTagName }], 
+            optionalServices: [BEACON_SERVICE_UUID] 
         });
 
+        // 2. AŞAMA: ID Kontrolü (Burası kritik!)
+        // Cihazın Bluetooth ID'si ile Firebase'deki tagId eşleşiyor mu?
+        if (device.id !== targetTagId) {
+            console.error("ID Uyuşmazlığı! Cihaz ID:", device.id, "Beklenen:", targetTagId);
+            showWarningModal("❌ GEÇERSİZ CİHAZ! Bu nokta için doğru cihaz değil.");
+            return; // Eşleşme yoksa burada dur, onaylama yapma!
+        }
+
+        showWarningModal("Cihaz Doğrulandı! Bağlanıyor...", 2000);
         const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(BEACON_SERVICE_UUID);
-        const characteristic = await service.getCharacteristic(BEACON_CHARACTERISTIC_UUID);
 
-        await characteristic.startNotifications();
-        showWarningModal("Cihaz bağlandı! Onay için iTag butonuna 1 kez basın.", 3000);
+        // 3. AŞAMA: Her şey doğruysa onayla
+        noktayiOnaylaVeKaydet(pointName, btnEl);
 
-        characteristic.addEventListener('characteristicvaluechanged', (event) => {
-            // FİZİKSEL BUTONA BASILDI
-            noktayiOnaylaVeKaydet(pointName, btnEl);
-            device.gatt.disconnect(); 
-        });
+        setTimeout(() => { device.gatt.disconnect(); }, 1000);
 
     } catch (error) {
-        console.log("Bluetooth hatası:", error);
+        console.log("Bağlantı hatası:", error);
+        showWarningModal("Cihaz seçilmedi veya bağlantı hatası!");
     }
 }
 devriyeStartBtn.addEventListener('click', async () => {
@@ -1227,21 +1260,17 @@ devriyeEndBtn.addEventListener('click', async () => {
     }
 });
 async function finishDevriyeWithDate() {
-    const devriyeEndTime = new Date(); // 🔹 Bitiriş zamanı
+    const devriyeEndTime = new Date(); 
     const totalPoints = document.querySelectorAll('.qrBtn').length;
     const readCount = readPoints.length;
     
-    // 1️⃣ Durum Belirleme
     const statusText = (readCount > 0 && readCount === totalPoints) ? "Tam devriye" : "Eksik devriye";
-	
-    
-    // 2️⃣ Blok (startPoint) Bilgisini Nöbet Kaydından Çekme
+
     let blockName = "Bilinmiyor";
     try {
         const nobetSnapshot = await get(nobetRecordsRef);
         if (nobetSnapshot.exists()) {
             const records = nobetSnapshot.val();
-            // Mevcut kullanıcının 'started' durumundaki nöbetini bul
             for (const key in records) {
                 const rec = records[key];
                 if (rec.startBy === (currentUser.name || currentUser.username) && rec.status === 'started') {
@@ -1254,7 +1283,6 @@ async function finishDevriyeWithDate() {
         console.error("Blok bilgisi alınırken hata:", err);
     }
 
-    // 3️⃣ Tarih ve Format İşlemleri
     const year = devriyeEndTime.getFullYear();
     const month = String(devriyeEndTime.getMonth() + 1).padStart(2, '0');
     const day = String(devriyeEndTime.getDate()).padStart(2, '0');
@@ -1263,11 +1291,10 @@ async function finishDevriyeWithDate() {
     const weekday = devriyeEndTime.toLocaleDateString('tr-TR', { weekday: 'long' });
     const displayDate = `${devriyeEndTime.toLocaleDateString('tr-TR')} (${weekday.charAt(0).toUpperCase() + weekday.slice(1)})`;
 
-    // 4️⃣ Firebase'e Gidecek Veri Paketi (block eklendi)
     const devriyeRecord = {
         user: currentUser.username || currentUser.name,
         name: currentUser.name || currentUser.username,
-        block: blockName, // 🚀 Eksik olan blok kaydı eklendi
+        block: blockName,
         start: devriyeStartTime.toLocaleTimeString('tr-TR'),
         end: devriyeEndTime.toLocaleTimeString('tr-TR'),
         status: statusText,
@@ -1276,41 +1303,65 @@ async function finishDevriyeWithDate() {
         displayDate: displayDate
     };
 
-    // 5️⃣ Kayıt ve Temizlik İşlemleri
     try {
         const userKey = currentUser.username || currentUser.name;
         const dailyRef = ref(db, `devriyeHistory/${dateKey}/${userKey}`);
         
-        await push(dailyRef, devriyeRecord); // Geçmişe ekle
-        await set(activeDevriyeRef, null);    // Aktif devriyeyi temizle
-		// EKSİK DEVRİYE VARSA MERKEZ RADARI TETİKLE
+        await push(dailyRef, devriyeRecord); 
+        await set(activeDevriyeRef, null);    
+
         if (statusText === "Eksik devriye") {
-            await update(ref(merkezDb, "sites/" + siteID), { 
-                hasMissingPatrol: true 
-            });
+            await update(ref(merkezDb, "sites/" + siteID), { hasMissingPatrol: true });
         }
         
-        // Arayüzü Sıfırla
+        // --- 🟢 BURASI HER ŞEYİ ESKİ HALİNE GETİREN TEMİZLİK KISMI ---
         devriyeStarted = false;
+        readPoints = []; // Hafızayı boşalt
         devriyeEndBtn.disabled = true;
-		devriyeStartBtn.classList.add('pulse-blue');
+        devriyeStartBtn.classList.add('pulse-blue');
         devriyeStatus.innerText = 'Devriye tamamlandı ve kaydedildi.';
         
-        document.querySelectorAll('.qrBtn').forEach(btn => {
-            btn.classList.remove('read');
-            if (btn.dataset.point) {
-                btn.nextElementSibling.innerText = btn.dataset.point;
+        // Ekrandaki tüm yeşilleri sil, maviye ve beyaza döndür
+        document.querySelectorAll('#qrListContainer > div').forEach(row => {
+            const btBtn = row.querySelector('button'); // Bluetooth butonu
+            const qrBtn = row.querySelector('.qrBtn'); // Gizli QR butonu
+            const span = row.querySelector('span');    // Yazı
+
+            if (btBtn) {
+                btBtn.disabled = false;
+                btBtn.innerText = "🔵 Doğrula";
+                btBtn.style.backgroundColor = "#3498db"; 
+                btBtn.style.color = "white";
+                btBtn.style.textShadow = "none";
+            }
+
+            if (qrBtn) {
+                qrBtn.classList.remove('read');
+                qrBtn.disabled = false;
+            }
+
+            if (span) {
+                // Yazıyı eski ismine döndür (✓ Tamamlandı'yı sil)
+                if (qrBtn && qrBtn.dataset.point) {
+                    span.innerText = qrBtn.dataset.point;
+                } else {
+                    span.innerText = span.innerText.replace('✓ ', '').replace(' Tamamlandı', '');
+                }
+                // Yeşillikleri temizle
+                span.style.color = ""; 
+                span.style.fontWeight = "";
+                span.style.textShadow = "";
             }
         });
+        // -----------------------------------------------------------
 
-        // Geçmiş listesini otomatik yenile (opsiyonel)
         if (typeof loadDevriyeForDate === "function") {
             loadDevriyeForDate(dateKey);
         }
 
     } catch (error) {
-        console.error("Devriye kaydedilirken hata oluştu:", error);
-        alert("Kayıt sırasında bir hata oluştu. İnternet bağlantınızı kontrol edin.");
+        console.error("Hata:", error);
+        alert("Kayıt sırasında hata oluştu!");
     }
 }
 async function loadDevriyeForDate(dateKey){
@@ -1408,76 +1459,96 @@ closeScanner.addEventListener('click', ()=>{
 });
 async function loadQRPoints() {
     try {
+        // Önce nöbet kaydından blok ismini (startPoint) alıyoruz
         const nobetSnapshot = await get(nobetRecordsRef);
         let startPoint = null;
         if(nobetSnapshot.exists()){
             const records = nobetSnapshot.val();
             for(const rec of Object.values(records)){
                 if(rec.startBy === (currentUser.name || currentUser.username) && rec.status==='started'){
-                    startPoint = rec.startPoint.trim();
+                    startPoint = rec.startPoint ? rec.startPoint.trim() : null;
                     break;
                 }
             }
         }
-		if(devriyeStarted){
-    updateQRButtons();
-}
-        let pointsRef = startPoint ? ref(db, `${startPoint}qrcodes`) : null;
-        let snapshot = pointsRef ? await get(pointsRef) : null;
-        let pointsData = snapshot && snapshot.exists() ? snapshot.val() : null;
-        if(!pointsData){
-            pointsRef = ref(db,'qrCodes');
-            snapshot = await get(pointsRef);
-            pointsData = snapshot.exists() ? snapshot.val() : {};
-        }
+
+        // Noktaları Firebase'den çek
+        let pointsRef = startPoint ? ref(db, `${startPoint}qrcodes`) : ref(db, 'qrCodes');
+        let snapshot = await get(pointsRef);
+        let pointsData = snapshot.exists() ? snapshot.val() : {};
+
         qrListContainer.innerHTML = '';
-        Object.values(pointsData).forEach(point=>{
+        
+        // Veriyi döngüye al
+        Object.values(pointsData).forEach(point => {
             const div = document.createElement('div');
-            const btn = document.createElement('button');
-            btn.classList.add('qrBtn');
-            btn.dataset.qrid = point.qrId;
-            btn.dataset.point = point.name;
-            btn.innerText = "QR Okut";
-			btn.style.display = 'none';
-            const span = document.createElement('span');
-            span.innerText = point.name;
-if(readPoints.includes(point.name)){
-    btn.classList.add('read');
-    span.innerText = 'Tamamlandı';
-}
-// 🔵 Bluetooth Butonu Oluştur
+            div.style.marginBottom = "15px"; // Satırlar arası boşluk
+
+            // 🔵 Bluetooth Butonu
             const btBtn = document.createElement('button');
             btBtn.innerText = "🔵 Doğrula";
-            btBtn.style.cssText = "margin-right:8px; padding:10px; border-radius:10px; border:none; background:#3498db; color:white; font-weight:bold;";
+            btBtn.style.cssText = "margin-right:8px; padding:10px; border-radius:10px; border:none; background:#3498db; color:white; font-weight:bold; cursor:pointer;";
             
-            if(readPoints.some(p => p.name === point.name)) {
-                btBtn.disabled = true;
-                btBtn.style.background = "#7f8c8d";
-            }
+            // ⬛ QR Butonu (Gizli ama lazım)
+            const qrBtn = document.createElement('button');
+            qrBtn.classList.add('qrBtn');
+            qrBtn.dataset.qrid = point.qrId;
+            qrBtn.dataset.point = point.name;
+            qrBtn.style.display = 'none';
 
+            // 📝 Nokta İsmi (Span)
+            const span = document.createElement('span');
+            span.innerText = point.name;
+            span.style.fontSize = "16px";
+
+            // --- YEŞİLLENDİRME VE KONTROL BÖLÜMÜ ---
+            // readPoints dizisinin varlığından emin olalım
+            const safeReadPoints = Array.isArray(readPoints) ? readPoints : [];
+            const isRead = safeReadPoints.some(p => p.name === point.name);
+
+            if(isRead) {
+                // Bluetooth butonu yeşil ve kapalı
+                btBtn.disabled = true;
+                btBtn.innerText = "✅ Doğrulandı";
+                btBtn.style.backgroundColor = "#00c851"; 
+                btBtn.style.color = "#fff";
+
+                // QR butonu işaretli
+                qrBtn.classList.add('read');
+                qrBtn.disabled = true;
+
+                // Yazı yeşil ve kalın
+                span.innerText = '✓ Tamamlandı';
+                span.style.color = "#00e676";
+                span.style.fontWeight = "800";
+                span.style.textShadow = "0 0 8px rgba(0, 230, 118, 0.4)";
+            }
+            // ---------------------------------------
+
+            // Bluetooth Tıklama Olayı
             btBtn.addEventListener('click', () => {
-                startBluetoothScanner(point.name, btBtn);
+                if(point.tagName && point.tagId) {
+                    startBluetoothScanner(point.name, btBtn, point.tagName, point.tagId);
+                } else {
+                    showWarningModal("BU NOKTA CGA DEVRİYE ALANINA KAYITLI DEĞİL!");
+                }
             });
 
-            div.appendChild(btBtn); // Bluetooth Butonu
-            div.appendChild(btn);   // QR Butonu
-			
-            div.appendChild(span);  // Nokta İsmi
+            div.appendChild(btBtn);
+            div.appendChild(qrBtn);
+            div.appendChild(span);
             qrListContainer.appendChild(div);
-btn.addEventListener('click', ()=>{
-    if(btn.classList.contains('read')){
-        showWarningModal(
-            "Bu nokta başarılı bir şekilde okutulmuştur. Lütfen diğer noktaları okutunuz.",
-            2500
-        );
-        return;
-    }
-    startScanner(point.name, btn);
-});
         });
+
+        // Eğer aktif devriye varsa butonları bir kez daha kontrol et (Garantiye al)
+        if(devriyeStarted) {
+            updateQRButtons();
+        }
+
     } catch(err){
         console.error("QR noktaları yüklenirken hata:", err);
-        alert("QR noktaları yüklenemedi! İnternet bağlantınızı kontrol edin.");
+        // Hata mesajını daha detaylı verelim ki sorunu anlayasın
+        showWarningModal("Veri yükleme hatası! Lütfen sayfayı yenileyin.");
     }
 }
 // Sayfa yüklendiğinde çağır
@@ -1519,10 +1590,32 @@ let statusText = (readCount > 0 && readCount === totalPoints) ? "Tam devriye" : 
     await set(activeDevriyeRef, null);
     devriyeStarted = false;
     devriyeEndBtn.disabled = true;
-    devriyeStatus.innerText = 'Devriye tamamlandı.';
-    document.querySelectorAll('.qrBtn').forEach(btn=>{
-        btn.classList.remove('read'); 
-        btn.nextElementSibling.innerText=btn.dataset.point;
+   devriyeStatus.innerText = 'Devriye tamamlandı.';
+    
+    // Tüm listeyi sıfırla
+    document.querySelectorAll('.qrListContainer > div').forEach(row => {
+        const btBtn = row.querySelector('button:first-child');
+        const qrBtn = row.querySelector('.qrBtn');
+        const span = row.querySelector('span');
+
+        // Bluetooth butonunu eski haline getir
+        if(btBtn) {
+            btBtn.disabled = false;
+            btBtn.innerText = "🔵 Doğrula";
+            btBtn.style.backgroundColor = "#3498db";
+        }
+        // QR butonu sıfırla
+        if(qrBtn) {
+            qrBtn.classList.remove('read');
+            qrBtn.disabled = false;
+        }
+        // Yazıyı eski haline getir
+        if(span) {
+            span.innerText = span.dataset.originalName || span.innerText.replace('✓ ', '');
+            span.style.color = "";
+            span.style.fontWeight = "";
+            span.style.textShadow = "";
+        }
     });
 }
 // Modal gösterme fonksiyonu
