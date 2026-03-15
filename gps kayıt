@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CGA | GPS Master Stabilizer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --neon-blue: #00f2ff;
+            --deep-dark: #0a0a0f;
+            --glass: rgba(255, 255, 255, 0.05);
+            --lazer: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
+        }
+
+        body {
+            background-color: var(--deep-dark);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 400px;
+            background: rgba(15, 15, 25, 0.95);
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 0 40px rgba(0, 242, 255, 0.1);
+            position: relative;
+        }
+
+        /* Üst Lazer Çizgisi */
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 2px;
+            background: var(--lazer);
+        }
+
+        h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            text-align: center;
+            color: var(--neon-blue);
+            margin-bottom: 25px;
+            text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 12px;
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        /* GPS Status Box */
+        .status-card {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px dashed rgba(0, 242, 255, 0.2);
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .val { color: var(--neon-blue); font-weight: bold; }
+
+        /* Progress Bar */
+        .progress-wrapper {
+            width: 100%;
+            height: 6px;
+            background: #1a1a25;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #0077ff, var(--neon-blue));
+            box-shadow: 0 0 10px var(--neon-blue);
+            transition: width 0.4s ease;
+        }
+
+        /* Lazer Button */
+        .btn-lazer {
+            width: 100%;
+            padding: 18px;
+            background: transparent;
+            border: 1px solid var(--neon-blue);
+            color: var(--neon-blue);
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-lazer:active {
+            transform: scale(0.95);
+        }
+
+        .btn-lazer:disabled {
+            border-color: #444;
+            color: #444;
+        }
+
+        .log-box {
+            font-size: 0.8rem;
+            color: #888;
+            max-height: 80px;
+            overflow-y: auto;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+
+        /* Animasyonlar */
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        .measuring { animation: pulse 1s infinite; color: #ff3e3e; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2><i class="fas fa-satellite"></i> CGA GPS MASTER</h2>
+
+    <div class="input-group">
+        <label style="font-size: 0.8rem; color: #aaa;">SABİTLENECEK NOKTA</label>
+        <select id="pointSelect">
+            <option value="">Nokta Seçiniz...</option>
+            <option value="Nokta_1">A BLOK GİRİŞ</option>
+            <option value="Nokta_2">B BLOK OTOPARK</option>
+            <option value="Nokta_3">ARKA BAHÇE KAPISI</option>
+        </select>
+    </div>
+
+    <div class="status-card">
+        <div class="status-row">
+            <span>Ölçüm Durumu:</span>
+            <span id="status-text" class="">Hazır</span>
+        </div>
+        <div class="progress-wrapper">
+            <div id="progress-bar"></div>
+        </div>
+        <div class="status-row">
+            <span>Anlık Enlem:</span>
+            <span id="lat-val" class="val">-</span>
+        </div>
+        <div class="status-row">
+            <span>Anlık Boylam:</span>
+            <span id="lng-val" class="val">-</span>
+        </div>
+        <div class="status-row">
+            <span>Hata Payı:</span>
+            <span id="acc-val" class="val">-</span>
+        </div>
+    </div>
+
+    <button id="startBtn" class="btn-lazer" onclick="startMasterCalibration()">
+        <i class="fas fa-crosshairs"></i> 6'LI ANALİZİ BAŞLAT
+    </button>
+
+    <div id="log-box" class="log-box">
+        * Sistem 6 örnek alıp ortalamasını hesaplar...
+    </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
+<script>
+    // --- FIREBASE AYARLARINI BURAYA YAPIŞTIR ---
+    const firebaseConfig = {
+        apiKey: "AIzaSy...",
+        authDomain: "cga-security.firebaseapp.com",
+        projectId: "cga-security",
+        storageBucket: "cga-security.appspot.com",
+        messagingSenderId: "...",
+        appId: "..."
+    };
+    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+    const db = firebase.firestore();
+
+    let samples = [];
+    const TOTAL_SAMPLES = 6;
+
+    async function startMasterCalibration() {
+        const pointId = document.getElementById('pointSelect').value;
+        const btn = document.getElementById('startBtn');
+        const log = document.getElementById('log-box');
+
+        if (!pointId) {
+            alert("Lütfen önce bir nokta seçin!");
+            return;
+        }
+
+        // Başlatma Hazırlığı
+        samples = [];
+        btn.disabled = true;
+        document.getElementById('status-text').innerText = "ÖLÇÜLÜYOR...";
+        document.getElementById('status-text').classList.add('measuring');
+        log.innerHTML = "Analiz başladı. Lütfen kıpırdamayın...";
+
+        for (let i = 1; i <= TOTAL_SAMPLES; i++) {
+            try {
+                const pos = await getLocation();
+                
+                // 15 metreden fazla sapma varsa bu ölçümü geçersiz say ve tekrarla
+                if (pos.coords.accuracy > 15) {
+                    log.innerHTML += `<br><span style="color:orange;">! Sapma Yüksek (${Math.round(pos.coords.accuracy)}m). Tekrar...</span>`;
+                    i--; 
+                    continue;
+                }
+
+                samples.push({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                });
+
+                // UI Güncelle
+                updateStats(pos.coords, i);
+                log.innerHTML += `<br>Örnek ${i} alındı (±${Math.round(pos.coords.accuracy)}m)`;
+                log.scrollTop = log.scrollHeight;
+
+                // 1.5 saniye bekle (uydular için taze veri zamanı)
+                await new Promise(r => setTimeout(r, 1500));
+
+            } catch (err) {
+                alert("Konum alınamadı! GPS izni açık mı?");
+                resetUI();
+                return;
+            }
+        }
+
+        finishCalibration(pointId);
+    }
+
+    function getLocation() {
+        return new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 15000
+            });
+        });
+    }
+
+    function updateStats(coords, count) {
+        document.getElementById('lat-val').innerText = coords.latitude.toFixed(7);
+        document.getElementById('lng-val').innerText = coords.longitude.toFixed(7);
+        document.getElementById('acc-val').innerText = `±${coords.accuracy.toFixed(1)} m`;
+        
+        const progress = (count / TOTAL_SAMPLES) * 100;
+        document.getElementById('progress-bar').style.width = progress + "%";
+    }
+
+    async function finishCalibration(pointId) {
+        const avgLat = samples.reduce((a, b) => a + b.lat, 0) / TOTAL_SAMPLES;
+        const avgLng = samples.reduce((a, b) => a + b.lng, 0) / TOTAL_SAMPLES;
+
+        try {
+            await db.collection("qrCodes").doc(pointId).update({
+                fixedLat: avgLat,
+                fixedLng: avgLng,
+                isGpsVerified: true,
+                lastSetup: new Date().toISOString()
+            });
+
+            document.getElementById('status-text').innerText = "SABİTLENDİ";
+            document.getElementById('status-text').classList.remove('measuring');
+            document.getElementById('log-box').innerHTML += `<br><b style="color:var(--neon-blue);">✅ BAŞARILI: Nokta Veritabanına Yazıldı.</b>`;
+            alert("Koordinatlar Mükemmel Şekilde Sabitlendi!");
+        } catch (e) {
+            alert("Hata: " + e.message);
+        } finally {
+            document.getElementById('startBtn').disabled = false;
+        }
+    }
+
+    function resetUI() {
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('status-text').innerText = "Hata Oluştu";
+        document.getElementById('status-text').classList.remove('measuring');
+    }
+</script>
+
+</body>
+</html>
