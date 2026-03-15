@@ -1126,33 +1126,42 @@ async function startBluetoothScanner(pointName, btnEl, targetTagName, targetTagI
     if(!devriyeStarted){ showWarningModal("Önce devriyeyi başlatın!"); return; }
     
     try {
-        showWarningModal(`Lütfen "${targetTagName}" Devriye Noktasını Seçin...`, 5000);
-        
-        // 1. AŞAMA: Sadece "C-1" ismindeki cihazları listele
+        // 1. ADIM: Sadece adminin belirlediği isimdeki cihazları listele
         const device = await navigator.bluetooth.requestDevice({
-            filters: [{ name: targetTagName }], 
+            filters: [{ name: targetTagName }],
             optionalServices: [BEACON_SERVICE_UUID] 
         });
 
-        // 2. AŞAMA: ID Kontrolü (Burası kritik!)
-        // Cihazın Bluetooth ID'si ile Firebase'deki tagId eşleşiyor mu?
-        if (device.id !== targetTagId) {
-            console.error("ID Uyuşmazlığı! Cihaz ID:", device.id, "Beklenen:", targetTagId);
-            showWarningModal("❌ GEÇERSİZ CİHAZ! Bu nokta için doğru cihaz değil.");
-            return; // Eşleşme yoksa burada dur, onaylama yapma!
+        showWarningModal("Cihaz Doğrulanıyor...", 2000);
+        
+        // 2. ADIM: Cihaza bağlanıp içindeki servisleri kontrol et
+        const server = await device.gatt.connect();
+        const services = await server.getPrimaryServices();
+        
+        // 3. ADIM: Firebase'deki tagId (Sabit UUID) ile cihazdaki UUID eşleşiyor mu?
+        // Mobilde device.id değişse bile bu servis UUID'si asla değişmez.
+        const isMatch = services.some(s => s.uuid.toLowerCase() === targetTagId.toLowerCase());
+
+        // Eğer saat gibi servisleri gizleyen bir cihazla test yapıyorsan 
+        // ve UUID eşleşmiyorsa, yedek kontrol olarak İSİM eşleşmesine bak:
+        const nameMatch = (device.name === targetTagName);
+
+        if (isMatch || nameMatch) {
+            console.log("Doğrulama Başarılı!");
+            // Her şey yolundaysa noktayı onayla
+            await noktayiOnaylaVeKaydet(pointName, btnEl);
+        } else {
+            showWarningModal("❌ GEÇERSİZ CİHAZ! Bu iTag bu noktaya ait değil.");
+            device.gatt.disconnect();
+            return;
         }
 
-        showWarningModal("Cihaz Doğrulandı! Bağlanıyor...", 2000);
-        const server = await device.gatt.connect();
-
-        // 3. AŞAMA: Her şey doğruysa onayla
-        noktayiOnaylaVeKaydet(pointName, btnEl);
-
-        setTimeout(() => { device.gatt.disconnect(); }, 1000);
+        // İşlem bitince bağlantıyı kes
+        setTimeout(() => { if(device.gatt.connected) device.gatt.disconnect(); }, 1000);
 
     } catch (error) {
-        console.log("Bağlantı hatası:", error);
-        showWarningModal("Cihaz seçilmedi veya bağlantı hatası!");
+        console.log("Bağlantı Hatası:", error);
+        showWarningModal("Cihaz seçilmedi veya bağlantı kurulamadı.");
     }
 }
 devriyeStartBtn.addEventListener('click', async () => {
